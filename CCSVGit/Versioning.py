@@ -54,45 +54,6 @@ class VersionSegment(Enum):
 	Build = 4
 	Prerelease = 5
 
-# class Versioning:
-# 	@staticmethod
-# 	def BumpVersion(version:str, segment:VersionSegment = VersionSegment.Patch) -> str:
-# 		returnValue:str = None
-# 		version:SemVer = SemVer.parse(version)
-# 		match segment:
-# 			case VersionSegment.Major:
-# 				version = version.bump_major()
-# 			case VersionSegment.Minor:
-# 				version = version.bump_minor()
-# 			case VersionSegment.Patch:
-# 				version = version.bump_patch()
-# 			case VersionSegment.Build:
-# 				version = version.bump_build()
-# 			case VersionSegment.Prerelease:
-# 				version = version.bump_prerelease()
-# 		returnValue = str(version)
-# 		return returnValue
-
-# 	@staticmethod
-# 	def GetPyProjectName(tomlPath:Path) -> str:
-# 		returnValue:str = None
-# 		tomlData:dict = tomllib.loads(tomlPath.read_text())
-# 		returnValue = tomlData["project"]["name"]
-# 		return returnValue
-
-# 	@staticmethod
-# 	def GetPyProjectVersion(tomlPath:Path) -> SemVer:
-# 		returnValue:SemVer = None
-# 		tomlData:dict = tomllib.loads(tomlPath.read_text())
-# 		returnValue = SemVer.parse(tomlData["project"]["version"])
-# 		return returnValue
-
-# 	@staticmethod
-# 	def SetPyProjectVersion(tomlPath:Path, version:SemVer):
-# 		tomlData:dict = tomllib.loads(tomlPath.read_text())
-# 		tomlData["project"]["version"] = str(version)
-# 		tomlPath.write_text(tomli_w.dumps(tomlData))
-
 class ConventionalCommitFooter:
 	Tag:str | None = None
 	Value:str | None = None

@@ -604,19 +604,13 @@ class Versioning:
 			self.RepoVersionTags.SaveChangeLog()
 			changedFilePaths.append(self.RepoVersionTags.RepoMeta.ChangeLogPath)
 
-			print("changedFilePaths:", changedFilePaths)
-
 			for tomlPath in self.PyProjectPaths:
 				if (self.EvaluatePyProjectVersion(tomlPath, finalVersion)):
 					changedFilePaths.append(tomlPath)
 
-			print("changedFilePaths:", changedFilePaths)
-
 			for sqlProjectPath in self.SQLProjectPaths:
 				if (self.EvaluateSQLProjectVersion(sqlProjectPath, finalVersion)):
 					changedFilePaths.append(sqlProjectPath)
-
-			print("changedFilePaths:", changedFilePaths)
 
 			print("")
 			outputMessage = colored("The following files have been changed.\n", color="yellow")

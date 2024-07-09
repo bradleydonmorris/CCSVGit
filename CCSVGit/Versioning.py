@@ -568,6 +568,7 @@ class Versioning:
 	RepoVersionTags:VersionTags | None = None
 	PyProjectPaths:list[Path] = list[Path]()
 	SQLProjectPaths:list[Path] = list[Path]()
+	SQLPublishProfilePaths:list[Path] = list[Path]()
 
 	def __init__(self, repoSearchPath:Path | None = None) -> None:
 		self.RepoSearchPath = repoSearchPath
@@ -577,6 +578,8 @@ class Versioning:
 				self.PyProjectPaths.append(path)
 			for path in self.RepoVersionTags.RepoPath.rglob("*.sqlproj"):
 				self.SQLProjectPaths.append(path)
+			for path in self.RepoVersionTags.RepoPath.rglob("*.publish.xml"):
+				self.SQLPublishProfilePaths.append(path)
 
 	def BumpAndTag(self) -> None:
 		changedFilePaths:list[Path] = list[Path]()
@@ -614,6 +617,10 @@ class Versioning:
 			for sqlProjectPath in self.SQLProjectPaths:
 				if (self.EvaluateSQLProjectVersion(sqlProjectPath, finalVersion)):
 					changedFilePaths.append(sqlProjectPath)
+
+			for sqlPublishProfilePath in self.SQLPublishProfilePaths:
+				if (self.EvaluateSQLPublishProfileVersion(sqlPublishProfilePath, finalVersion)):
+					changedFilePaths.append(sqlPublishProfilePath)
 
 			print("")
 			outputMessage = colored("The following files have been changed.\n", color="yellow")
@@ -795,6 +802,118 @@ class Versioning:
 			defaultDatabaseVersionElement[0].text = str(version)
 		sqlProjPath.write_bytes(etree.tostring(tree, pretty_print=True))
 
+	def EvaluateSQLPublishProfileVersion(self, path:Path, finalVersion:SemVer) -> bool:
+		returnValue:bool = False
+		profileName:str = self.GetSQLPublishProfileName(path)
+		profileCurrentVersion = self.GetSQLPublishProfileVersion(path)
+		profileFinalVersion = finalVersion
+		print("")
+		outputMessage = colored("Reading ", color="yellow")
+		outputMessage += colored(path.relative_to(self.RepoVersionTags.RepoPath), color="red")
+		outputMessage += colored(" ...\n", color="yellow")
+		outputMessage += colored("SQL Publish Profile ", color="yellow")
+		outputMessage += colored(profileName, color="red")
+		outputMessage += colored(" current version is ", color="yellow")
+		outputMessage += colored(profileCurrentVersion, color="red")
+		outputMessage += colored(".\nPress enter to set ", color="yellow")
+		outputMessage += colored(profileFinalVersion, color="red")
+		outputMessage += colored(" as the final version for ", color="yellow")
+		outputMessage += colored(profileName, color="red")
+		outputMessage += colored(",\n   or enter a new final version: ", color="yellow")
+		profileNewVersion:str = input(outputMessage)
+		if (len(profileNewVersion) > 0):
+			if (profileNewVersion.startswith("v")):
+				profileNewVersion = profileNewVersion[1:]
+			if (profileCurrentVersion != profileNewVersion):
+				profileFinalVersion = SemVer.parse(profileNewVersion)
+				outputMessage = colored(profileFinalVersion, color="red")
+				outputMessage += colored(" will by used as the final version for ", color="yellow")
+				outputMessage += colored(profileName, color="red")
+				outputMessage += colored(".", color="yellow")
+				print(outputMessage)
+				self.SetSQLPublishProfileVersion(path, profileFinalVersion)
+				returnValue = True
+			else:
+				outputMessage = colored(profileCurrentVersion, color="red")
+				outputMessage += colored(" will by used as the final version for ", color="yellow")
+				outputMessage += colored(profileName, color="red")
+				outputMessage += colored(".\n", color="yellow")
+				outputMessage += colored("The file will remain unchanged.", color="yellow")
+				print(outputMessage)
+				returnValue = False
+		else:
+			if (profileCurrentVersion != finalVersion):
+				profileFinalVersion = finalVersion
+				outputMessage = colored(profileFinalVersion, color="red")
+				outputMessage += colored(" will by used as the final version for ", color="yellow")
+				outputMessage += colored(profileName, color="red")
+				outputMessage += colored(".", color="yellow")
+				print(outputMessage)
+				self.SetSQLPublishProfileVersion(path, profileFinalVersion)
+				returnValue = True
+			else:
+				outputMessage = colored(profileCurrentVersion, color="red")
+				outputMessage += colored(" will by used as the final version for ", color="yellow")
+				outputMessage += colored(profileName, color="red")
+				outputMessage += colored(".\n", color="yellow")
+				outputMessage += colored("The file will remain unchanged.", color="yellow")
+				print(outputMessage)
+				returnValue = False
+		return returnValue
+
+	def ParseSQLServerConnectionString(self, connectionString:str, removeSensitiveInfo:bool = False) -> dict:
+		returnValue:dict = dict()
+		for keyValue in connectionString.split(";"):
+			keyValue = keyValue.strip()
+			if (keyValue):
+				keyValuePair:list = keyValue.split("=")
+				key:str = ""
+				value:str = ""
+				if (len(keyValuePair) == 2):
+					key = keyValuePair[0].strip()
+					value = keyValuePair[1].strip()
+					returnValue.update({key: value})
+				elif (len(keyValuePair) == 1):
+					key = keyValuePair[0].strip()
+					value = ""
+					returnValue.update({key: value})
+		if (removeSensitiveInfo):
+			returnValue.pop("Password")
+		return returnValue
+
+	def GetSQLPublishProfileName(self, sqlPublishProfilePath:Path) -> str:
+		returnValue:str = None
+		targetServerName:str = None
+		targetDatabaseName:str = None
+		targetConnectionString:str = None
+		tree = etree.parse(sqlPublishProfilePath)
+		targetDatabaseNameElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'PropertyGroup']/*[local-name() = 'TargetDatabaseName']")
+		if (targetDatabaseNameElement is not None and len(targetDatabaseNameElement) > 0):
+			targetDatabaseName = targetDatabaseNameElement[0].text
+		targetConnectionStringElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'PropertyGroup']/*[local-name() = 'TargetConnectionString']")
+		if (targetConnectionStringElement is not None and len(targetConnectionStringElement) > 0):
+			targetConnectionString = targetConnectionStringElement[0].text
+		if (targetConnectionString is not None):
+			connString:dict = self.ParseSQLServerConnectionString(targetConnectionString)
+			if ("Data Source" in connString.keys()):
+				targetServerName = connString["Data Source"]
+		returnValue = f"{sqlPublishProfilePath.name} - [{targetServerName}].[{targetDatabaseName}]"
+		return returnValue
+
+	def GetSQLPublishProfileVersion(self, sqlPublishProfilePath:Path) -> SemVer:
+		returnValue:SemVer = None
+		tree = etree.parse(sqlPublishProfilePath)
+		databaseVersionElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'ItemGroup']/*[local-name() = 'SqlCmdVariable' and @Include='DatabaseVersion']/*[local-name() = 'Value']")
+		if (databaseVersionElement is not None and len(databaseVersionElement) > 0):
+			returnValue = databaseVersionElement[0].text
+		return returnValue
+
+	def SetSQLPublishProfileVersion(self, sqlPublishProfilePath:Path, version:SemVer):
+		tree = etree.parse(sqlPublishProfilePath)
+		databaseVersionElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'ItemGroup']/*[local-name() = 'SqlCmdVariable' and @Include='DatabaseVersion']/*[local-name() = 'Value']")
+		if (databaseVersionElement is not None and len(databaseVersionElement) > 0):
+			databaseVersionElement[0].text = str(version)
+		sqlPublishProfilePath.write_bytes(etree.tostring(tree, pretty_print=True))
 
 __all__ = ["CommitType", "VersionSegment",
 		   "ConventionalCommitFooter", "ConventionalCommit",

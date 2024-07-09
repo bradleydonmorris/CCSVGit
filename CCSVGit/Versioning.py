@@ -780,14 +780,14 @@ class Versioning:
 	def GetSQLProjectVersion(self, sqlProjPath:Path) -> SemVer:
 		returnValue:SemVer = None
 		tree = etree.parse(sqlProjPath)
-		defaultDatabaseVersionElement = tree.xpath("//Project/ItemGroup/SqlCmdVariable[@Include='DatabaseVersion']/DefaultValue")
+		defaultDatabaseVersionElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'ItemGroup']/*[local-name() = 'SqlCmdVariable' and @Include='DatabaseVersion']/*[local-name() = 'DefaultValue']")
 		if (defaultDatabaseVersionElement is not None and len(defaultDatabaseVersionElement) > 0):
 			returnValue = defaultDatabaseVersionElement[0].text
 		return returnValue
 
 	def SetSQLProjectVersion(self, sqlProjPath:Path, version:SemVer):
 		tree = etree.parse(sqlProjPath)
-		defaultDatabaseVersionElement = tree.xpath("//Project/ItemGroup/SqlCmdVariable[@Include='DatabaseVersion']/DefaultValue")
+		defaultDatabaseVersionElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'ItemGroup']/*[local-name() = 'SqlCmdVariable' and @Include='DatabaseVersion']/*[local-name() = 'DefaultValue']")
 		if (defaultDatabaseVersionElement is not None and len(defaultDatabaseVersionElement) > 0):
 			defaultDatabaseVersionElement[0].text = str(version)
 		sqlProjPath.write_bytes(etree.tostring(tree, pretty_print=True))

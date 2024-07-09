@@ -541,11 +541,14 @@ class VersionTags:
 				tagDate = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d")
 			retrunValue = f"{retrunValue}## [{versionTag.Name}]({repoURL}/releases/tag/{versionTag.Name}) ({tagDate})\n"
 			retrunValue = f"{retrunValue}{badges}\n"
-			for commit in versionTag.Commits:
-				commitDate:str = ""
-				if (commit.CommitterDate is not None):
-					commitDate = f"({commit.CommitterDate.strftime("%Y-%m-%d")})"
-				retrunValue = f"{retrunValue}* {commit.Type.GetEmoji()} {commit.Subject} ([{commit.AbbreviatedHash}]({repoURL}/commit/{commit.Hash}) {commitDate})\n"
+			if (versionTag.Commits is not None and len(versionTag.Commits) > 0):
+				for commit in versionTag.Commits:
+					commitDate:str = ""
+					if (commit.CommitterDate is not None):
+						commitDate = f"({commit.CommitterDate.strftime("%Y-%m-%d")})"
+					retrunValue = f"{retrunValue}* {commit.Type.GetEmoji()} {commit.Subject} ([{commit.AbbreviatedHash}]({repoURL}/commit/{commit.Hash}) {commitDate})\n"
+			else:
+				retrunValue = f"{retrunValue}* NO COMMITS FOUND\n"
 		return retrunValue
 
 	def SaveChangeLog(self, filePath:Path|None = None) -> None:

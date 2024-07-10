@@ -530,6 +530,7 @@ class Versioning:
 	PyProjectPaths:list[Path] = list[Path]()
 	SQLProjectPaths:list[Path] = list[Path]()
 	SQLPublishProfilePaths:list[Path] = list[Path]()
+	ChangedFiles:list[dict] = list[dict]()
 
 	def __init__(self, repoSearchPath:Path | None = None) -> None:
 		self.RepoSearchPath = repoSearchPath
@@ -547,7 +548,7 @@ class Versioning:
 		if (self.RepoVersionTags is not None):
 			self.RepoVersionTags.SaveChangeLog()
 			versionTag:VersionTag = self.RepoVersionTags.GetLatest()
-			outputMessage:str = colored("*************************************************\n", color="green")
+			outputMessage:str = colored("*****************************************************************************************\n", color="green")
 			outputMessage += colored("Currnet unreleased version is ", color="yellow")
 			outputMessage += colored(versionTag.Version, color="red")
 			outputMessage += colored(".", color="yellow")
@@ -570,26 +571,41 @@ class Versioning:
 			self.RepoVersionTags.SetLatestVersion(finalVersion)
 			self.RepoVersionTags.SaveChangeLog()
 			changedFilePaths.append(self.RepoVersionTags.RepoMeta.ChangeLogPath)
+			self.ChangedFiles.append({
+				"Type": "ChangeLog",
+				"Path": self.RepoVersionTags.RepoMeta.ChangeLogPath,
+				"IsChanged": True,
+				"PreviousVersion": None,
+				"NewVersion": None
+			})
 
+			print("")
+			print(colored("Scanning for pyproject.toml files...", color="green"))
 			for tomlPath in self.PyProjectPaths:
 				if (self.EvaluatePyProjectVersion(tomlPath, finalVersion)):
 					changedFilePaths.append(tomlPath)
+				print("")
 
+			print("")
+			print(colored("Scanning for *.sqlproj files...", color="green"))
 			for sqlProjectPath in self.SQLProjectPaths:
 				if (self.EvaluateSQLProjectVersion(sqlProjectPath, finalVersion)):
 					changedFilePaths.append(sqlProjectPath)
+				print("")
 
+			print("")
+			print(colored("Scanning for *.publish.xml files...", color="green"))
 			for sqlPublishProfilePath in self.SQLPublishProfilePaths:
 				if (self.EvaluateSQLPublishProfileVersion(sqlPublishProfilePath, finalVersion)):
 					changedFilePaths.append(sqlPublishProfilePath)
+				print("")
+
+			print(colored("*****************************************************************************************", color="green"))
+			print(colored("RESULTS", color="green"))
+			print(colored("*****************************************************************************************", color="green"))
+			self.PrintOutChangedFiles()
 
 			print("")
-			outputMessage = colored("The following files have been changed.\n", color="yellow")
-			for changedFilePath in changedFilePaths:
-				outputMessage += "   "
-				outputMessage += colored(changedFilePath.relative_to(self.RepoVersionTags.RepoMeta.RepoPath), color="red")
-				outputMessage += "\n"
-
 			outputMessage += colored("Please confirm these files have been changed appropriately before committing.\n", "yellow")
 			outputMessage += colored("These files will be committed with the following message.\n", "yellow")
 			outputMessage += colored(f"   build: bump version to {finalVersion}\n", "red")
@@ -605,12 +621,76 @@ class Versioning:
 			else:
 				print(colored("NO COMMIT WAS MADE", "red"))
 
+	def PrintOutChangedFiles(self) -> None:
+		filePathLength:int = 0
+		for changeFile in self.ChangedFiles:
+			if (len(str(changeFile["Path"].relative_to(self.RepoVersionTags.RepoMeta.RepoPath))) > filePathLength):
+				filePathLength = len(str(changeFile["Path"].relative_to(self.RepoVersionTags.RepoMeta.RepoPath)))
+		outputMessage = colored("The following file modifications have been made.\n", color="green")
+		outputMessage += colored("red = changed", color="red")
+		outputMessage += colored("   yellow = unchanged\n", color="yellow")
+
+		outputMessage += colored("¯¯", color="green")
+		outputMessage += colored("¯"*filePathLength, color="green")
+		outputMessage += colored("¯¯", color="green")
+		outputMessage += colored("¯"*11, color="green")
+		outputMessage += colored("¯¯", color="green")
+		outputMessage += colored("¯"*11, color="green")
+		outputMessage += colored("¯¯\n", color="green")
+
+		outputMessage += colored("| ", color="green")
+		outputMessage += colored("Path".ljust(filePathLength), color="green")
+		outputMessage += colored("  ", color="green")
+		outputMessage += colored("Old Version", color="green")
+		outputMessage += colored("  ", color="green")
+		outputMessage += colored("New Version", color="green")
+		outputMessage += colored(" |\n", color="green")
+
+		outputMessage += colored("| ", color="green")
+		outputMessage += colored("-"*filePathLength, color="green")
+		outputMessage += colored("  ", color="green")
+		outputMessage += colored("-"*11, color="green")
+		outputMessage += colored("  ", color="green")
+		outputMessage += colored("-"*11, color="green")
+		outputMessage += colored(" |\n", color="green")
+
+		for changeFile in self.ChangedFiles:
+			path:str = str(changeFile["Path"].relative_to(self.RepoVersionTags.RepoMeta.RepoPath))
+			oldVersion:str = ""
+			newVersion:str = ""
+			if (changeFile["PreviousVersion"] is not None):
+				oldVersion = str(changeFile["PreviousVersion"])
+			if (changeFile["NewVersion"] is not None):
+				newVersion = str(changeFile["NewVersion"])
+			outputMessage += colored("| ", color="green")
+			if (changeFile["IsChanged"]):
+				outputMessage += colored(path.ljust(filePathLength), color="red")
+				outputMessage += colored("  ", color="red")
+				outputMessage += colored(oldVersion.rjust(11), color="red")
+				outputMessage += colored("  ", color="red")
+				outputMessage += colored(newVersion.rjust(11), color="red")
+			else:
+				outputMessage += colored(path.ljust(filePathLength), color="yellow")
+				outputMessage += colored("  ", color="yellow")
+				outputMessage += colored(oldVersion.rjust(11), color="yellow")
+				outputMessage += colored("  ", color="yellow")
+				outputMessage += colored(newVersion.rjust(11), color="yellow")
+			outputMessage += colored(" |\n", color="green")
+
+		outputMessage += colored("__", color="green")
+		outputMessage += colored("_"*filePathLength, color="green")
+		outputMessage += colored("__", color="green")
+		outputMessage += colored("_"*11, color="green")
+		outputMessage += colored("__", color="green")
+		outputMessage += colored("_"*11, color="green")
+		outputMessage += colored("__\n", color="green")
+		print(outputMessage)
+
 	def EvaluatePyProjectVersion(self, path:Path, finalVersion:SemVer) -> bool:
 		returnValue:bool = False
 		projectName:str = self.GetPyProjectName(path)
 		projectCurrentVersion = self.GetPyProjectVersion(path)
 		projectFinalVersion = finalVersion
-		print("")
 		outputMessage = colored("Reading ", color="yellow")
 		outputMessage += colored(path.relative_to(self.RepoVersionTags.RepoPath), color="red")
 		outputMessage += colored(" ...\n", color="yellow")
@@ -622,7 +702,7 @@ class Versioning:
 		outputMessage += colored(projectFinalVersion, color="red")
 		outputMessage += colored(" as the final version for ", color="yellow")
 		outputMessage += colored(projectName, color="red")
-		outputMessage += colored(",\n   or enter a new final version: ", color="yellow")
+		outputMessage += colored(", or enter a new final version: ", color="yellow")
 		projectNewVersion:str = input(outputMessage)
 		if (len(projectNewVersion) > 0):
 			if (projectNewVersion.startswith("v")):
@@ -635,14 +715,28 @@ class Versioning:
 				outputMessage += colored(".", color="yellow")
 				print(outputMessage)
 				self.SetPyProjectVersion(path, projectFinalVersion)
+				self.ChangedFiles.append({
+					"Type": "PyProject",
+					"Path": path,
+					"IsChanged": True,
+					"PreviousVersion": projectCurrentVersion,
+					"NewVersion": projectFinalVersion
+				})
 				returnValue = True
 			else:
 				outputMessage = colored(projectCurrentVersion, color="red")
 				outputMessage += colored(" will by used as the final version for ", color="yellow")
 				outputMessage += colored(projectName, color="red")
 				outputMessage += colored(".\n", color="yellow")
-				outputMessage += colored("The file will remain unchanged.", color="yellow")
+				outputMessage += colored("The file will remain unchanged.", color="red")
 				print(outputMessage)
+				self.ChangedFiles.append({
+					"Type": "PyProject",
+					"Path": path,
+					"IsChanged": False,
+					"PreviousVersion": projectCurrentVersion,
+					"NewVersion": None
+				})
 				returnValue = False
 		else:
 			if (projectCurrentVersion != finalVersion):
@@ -653,14 +747,28 @@ class Versioning:
 				outputMessage += colored(".", color="yellow")
 				print(outputMessage)
 				self.SetPyProjectVersion(path, projectFinalVersion)
+				self.ChangedFiles.append({
+					"Type": "PyProject",
+					"Path": path,
+					"IsChanged": True,
+					"PreviousVersion": projectCurrentVersion,
+					"NewVersion": projectFinalVersion
+				})
 				returnValue = True
 			else:
 				outputMessage = colored(projectCurrentVersion, color="red")
 				outputMessage += colored(" will by used as the final version for ", color="yellow")
 				outputMessage += colored(projectName, color="red")
 				outputMessage += colored(".\n", color="yellow")
-				outputMessage += colored("The file will remain unchanged.", color="yellow")
+				outputMessage += colored("The file will remain unchanged.", color="red")
 				print(outputMessage)
+				self.ChangedFiles.append({
+					"Type": "PyProject",
+					"Path": path,
+					"IsChanged": False,
+					"PreviousVersion": projectCurrentVersion,
+					"NewVersion": None
+				})
 				returnValue = False
 		return returnValue
 
@@ -681,7 +789,6 @@ class Versioning:
 		projectName:str = self.GetSQLProjectName(path)
 		projectCurrentVersion = self.GetSQLProjectVersion(path)
 		projectFinalVersion = finalVersion
-		print("")
 		outputMessage = colored("Reading ", color="yellow")
 		outputMessage += colored(path.relative_to(self.RepoVersionTags.RepoPath), color="red")
 		outputMessage += colored(" ...\n", color="yellow")
@@ -693,7 +800,7 @@ class Versioning:
 		outputMessage += colored(projectFinalVersion, color="red")
 		outputMessage += colored(" as the final version for ", color="yellow")
 		outputMessage += colored(projectName, color="red")
-		outputMessage += colored(",\n   or enter a new final version: ", color="yellow")
+		outputMessage += colored(", or enter a new final version: ", color="yellow")
 		projectNewVersion:str = input(outputMessage)
 		if (len(projectNewVersion) > 0):
 			if (projectNewVersion.startswith("v")):
@@ -706,14 +813,28 @@ class Versioning:
 				outputMessage += colored(".", color="yellow")
 				print(outputMessage)
 				self.SetSQLProjectVersion(path, projectFinalVersion)
+				self.ChangedFiles.append({
+					"Type": "SQLProject",
+					"Path": path,
+					"IsChanged": True,
+					"PreviousVersion": projectCurrentVersion,
+					"NewVersion": projectFinalVersion
+				})
 				returnValue = True
 			else:
 				outputMessage = colored(projectCurrentVersion, color="red")
 				outputMessage += colored(" will by used as the final version for ", color="yellow")
 				outputMessage += colored(projectName, color="red")
 				outputMessage += colored(".\n", color="yellow")
-				outputMessage += colored("The file will remain unchanged.", color="yellow")
+				outputMessage += colored("The file will remain unchanged.", color="red")
 				print(outputMessage)
+				self.ChangedFiles.append({
+					"Type": "SQLProject",
+					"Path": path,
+					"IsChanged": False,
+					"PreviousVersion": projectCurrentVersion,
+					"NewVersion": None
+				})
 				returnValue = False
 		else:
 			if (projectCurrentVersion != finalVersion):
@@ -724,14 +845,28 @@ class Versioning:
 				outputMessage += colored(".", color="yellow")
 				print(outputMessage)
 				self.SetSQLProjectVersion(path, projectFinalVersion)
+				self.ChangedFiles.append({
+					"Type": "SQLProject",
+					"Path": path,
+					"IsChanged": True,
+					"PreviousVersion": projectCurrentVersion,
+					"NewVersion": projectFinalVersion
+				})
 				returnValue = True
 			else:
 				outputMessage = colored(projectCurrentVersion, color="red")
 				outputMessage += colored(" will by used as the final version for ", color="yellow")
 				outputMessage += colored(projectName, color="red")
 				outputMessage += colored(".\n", color="yellow")
-				outputMessage += colored("The file will remain unchanged.", color="yellow")
+				outputMessage += colored("The file will remain unchanged.", color="red")
 				print(outputMessage)
+				self.ChangedFiles.append({
+					"Type": "SQLProject",
+					"Path": path,
+					"IsChanged": False,
+					"PreviousVersion": projectCurrentVersion,
+					"NewVersion": None
+				})
 				returnValue = False
 		return returnValue
 
@@ -768,7 +903,6 @@ class Versioning:
 		profileName:str = self.GetSQLPublishProfileName(path)
 		profileCurrentVersion = self.GetSQLPublishProfileVersion(path)
 		profileFinalVersion = finalVersion
-		print("")
 		outputMessage = colored("Reading ", color="yellow")
 		outputMessage += colored(path.relative_to(self.RepoVersionTags.RepoPath), color="red")
 		outputMessage += colored(" ...\n", color="yellow")
@@ -780,7 +914,7 @@ class Versioning:
 		outputMessage += colored(profileFinalVersion, color="red")
 		outputMessage += colored(" as the final version for ", color="yellow")
 		outputMessage += colored(profileName, color="red")
-		outputMessage += colored(",\n   or enter a new final version: ", color="yellow")
+		outputMessage += colored(", or enter a new final version: ", color="yellow")
 		profileNewVersion:str = input(outputMessage)
 		if (len(profileNewVersion) > 0):
 			if (profileNewVersion.startswith("v")):
@@ -793,14 +927,28 @@ class Versioning:
 				outputMessage += colored(".", color="yellow")
 				print(outputMessage)
 				self.SetSQLPublishProfileVersion(path, profileFinalVersion)
+				self.ChangedFiles.append({
+					"Type": "SQLPublishProfile",
+					"Path": path,
+					"IsChanged": True,
+					"PreviousVersion": profileCurrentVersion,
+					"NewVersion": profileFinalVersion
+				})
 				returnValue = True
 			else:
 				outputMessage = colored(profileCurrentVersion, color="red")
 				outputMessage += colored(" will by used as the final version for ", color="yellow")
 				outputMessage += colored(profileName, color="red")
 				outputMessage += colored(".\n", color="yellow")
-				outputMessage += colored("The file will remain unchanged.", color="yellow")
+				outputMessage += colored("The file will remain unchanged.", color="red")
 				print(outputMessage)
+				self.ChangedFiles.append({
+					"Type": "SQLPublishProfile",
+					"Path": path,
+					"IsChanged": False,
+					"PreviousVersion": profileCurrentVersion,
+					"NewVersion": None
+				})
 				returnValue = False
 		else:
 			if (profileCurrentVersion != finalVersion):
@@ -811,14 +959,28 @@ class Versioning:
 				outputMessage += colored(".", color="yellow")
 				print(outputMessage)
 				self.SetSQLPublishProfileVersion(path, profileFinalVersion)
+				self.ChangedFiles.append({
+					"Type": "SQLPublishProfile",
+					"Path": path,
+					"IsChanged": True,
+					"PreviousVersion": profileCurrentVersion,
+					"NewVersion": profileFinalVersion
+				})
 				returnValue = True
 			else:
 				outputMessage = colored(profileCurrentVersion, color="red")
 				outputMessage += colored(" will by used as the final version for ", color="yellow")
 				outputMessage += colored(profileName, color="red")
 				outputMessage += colored(".\n", color="yellow")
-				outputMessage += colored("The file will remain unchanged.", color="yellow")
+				outputMessage += colored("The file will remain unchanged.", color="red")
 				print(outputMessage)
+				self.ChangedFiles.append({
+					"Type": "SQLPublishProfile",
+					"Path": path,
+					"IsChanged": False,
+					"PreviousVersion": profileCurrentVersion,
+					"NewVersion": None
+				})
 				returnValue = False
 		return returnValue
 

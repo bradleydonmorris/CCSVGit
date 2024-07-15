@@ -183,7 +183,7 @@ class ConventionalCommit:
 		if (isinstance(self.CommitterDate, datetime.datetime)):
 			committerDate = self.CommitterDate.isoformat()
 		return f"{self.Hash}\t{self.AbbreviatedHash}\t{committerDate}\t{self.Subject}"
-
+	
 class ConventionalCommitStats:
 	Unknown:int = 0
 	Breaking:int = 0
@@ -329,6 +329,7 @@ class VersionTags:
 	GitRepo:Git | None = None
 	RepoPath:Path | None = None
 	RepoMeta:GitRepoMeta | None = None
+	ScopeLinks:dict = dict()
 	_list:list[VersionTag] = list[VersionTag]()
 
 	def __iter__(self):
@@ -337,12 +338,14 @@ class VersionTags:
 	def __getitem__(self, item):
 		return self._list[item]
 
-	def __init__(self, repoSearchPath:Path | None = None) -> None:
+	def __init__(self, repoSearchPath:Path | None = None, scopeLinks:dict|None = None) -> None:
 		if (repoSearchPath is not None
 	  		and repoSearchPath.exists()):
 			self.GitRepo = Git(repoSearchPath)
 			self.LoadFromRepo(repoSearchPath)
 			self._list = sorted(self._list, key=lambda vt: vt.Version, reverse=True)
+		if (scopeLinks is not None):
+			self.ScopeLinks = scopeLinks
 
 	def Add(self, versionTag:VersionTag) -> None:
 		self._list.append(versionTag)
@@ -505,10 +508,18 @@ class VersionTags:
 			retrunValue = f"{retrunValue}{badges}\n"
 			if (versionTag.Commits is not None and len(versionTag.Commits) > 0):
 				for commit in versionTag.Commits:
+					commitText:str = ""
 					commitDate:str = ""
+					subject:str = f"{commit.Type}:{commit.Description}"
 					if (commit.CommitterDate is not None):
 						commitDate = f"({commit.CommitterDate.strftime("%Y-%m-%d")})"
-					retrunValue = f"{retrunValue}* {commit.Type.GetEmoji()} {commit.Subject} ([{commit.AbbreviatedHash}]({repoURL}/commit/{commit.Hash}) {commitDate})\n"
+					if (commit.Scope is not None):
+						if (commit.Scope in self.ScopeLinks.keys()):
+							subject:str = f"{commit.Type}([{commit.Scope}]({self.ScopeLinks[commit.Scope]})):{commit.Description}"
+						else:
+							subject:str = f"{commit.Type}({commit.Scope}):{commit.Description}"
+					commitText = f"{commit.Type.GetEmoji()} {subject} ([{commit.AbbreviatedHash}]({repoURL}/commit/{commit.Hash}) {commitDate})"
+					retrunValue = f"{retrunValue}* {commitText})\n"
 			else:
 				retrunValue = f"{retrunValue}* NO COMMITS FOUND\n"
 		return retrunValue
@@ -533,10 +544,10 @@ class Versioning:
 	SQLPublishProfilePaths:list[Path] = list[Path]()
 	ChangedFiles:list[dict] = list[dict]()
 
-	def __init__(self, repoSearchPath:Path | None = None) -> None:
+	def __init__(self, repoSearchPath:Path | None = None, scopeLinks:dict|None = None) -> None:
 		self.RepoSearchPath = repoSearchPath
 		if (self.RepoSearchPath is not None):
-			self.RepoVersionTags = VersionTags(repoSearchPath)
+			self.RepoVersionTags = VersionTags(repoSearchPath, scopeLinks)
 			for path in self.RepoVersionTags.RepoPath.rglob("pyproject.toml"):
 				self.PyProjectPaths.append(path)
 			for path in self.RepoVersionTags.RepoPath.rglob("*.sqlproj"):
@@ -629,10 +640,6 @@ class Versioning:
 				print(colored("NO COMMIT WAS MADE", "red"))
 
 	def PrintOutChangedFiles(self) -> None:
-		filePathLength:int = 0
-		# for changeFile in self.ChangedFiles:
-		# 	if (len(str(changeFile["Path"].relative_to(self.RepoVersionTags.RepoMeta.RepoPath))) > filePathLength):
-		# 		filePathLength = len(str(changeFile["Path"].relative_to(self.RepoVersionTags.RepoMeta.RepoPath)))
 		outputMessage = colored("The following file modifications have been made.\n", color="green")
 		outputMessage += colored("red = changed", color="red")
 		outputMessage += colored("   yellow = unchanged\n", color="yellow")
@@ -670,61 +677,6 @@ class Versioning:
 			footerRows=None,
 			borderColor="green",
 			minimumCellWidths=minimumCellWidths)
-
-		# outputMessage += colored("¯¯", color="green")
-		# outputMessage += colored("¯"*filePathLength, color="green")
-		# outputMessage += colored("¯¯", color="green")
-		# outputMessage += colored("¯"*11, color="green")
-		# outputMessage += colored("¯¯", color="green")
-		# outputMessage += colored("¯"*11, color="green")
-		# outputMessage += colored("¯¯\n", color="green")
-
-		# outputMessage += colored("| ", color="green")
-		# outputMessage += colored("Path".ljust(filePathLength), color="green")
-		# outputMessage += colored("  ", color="green")
-		# outputMessage += colored("Old Version", color="green")
-		# outputMessage += colored("  ", color="green")
-		# outputMessage += colored("New Version", color="green")
-		# outputMessage += colored(" |\n", color="green")
-
-		# outputMessage += colored("| ", color="green")
-		# outputMessage += colored("-"*filePathLength, color="green")
-		# outputMessage += colored("  ", color="green")
-		# outputMessage += colored("-"*11, color="green")
-		# outputMessage += colored("  ", color="green")
-		# outputMessage += colored("-"*11, color="green")
-		# outputMessage += colored(" |\n", color="green")
-
-		# for changeFile in self.ChangedFiles:
-		# 	path:str = str(changeFile["Path"].relative_to(self.RepoVersionTags.RepoMeta.RepoPath))
-		# 	oldVersion:str = ""
-		# 	newVersion:str = ""
-		# 	if (changeFile["PreviousVersion"] is not None):
-		# 		oldVersion = str(changeFile["PreviousVersion"])
-		# 	if (changeFile["NewVersion"] is not None):
-		# 		newVersion = str(changeFile["NewVersion"])
-		# 	outputMessage += colored("| ", color="green")
-		# 	if (changeFile["IsChanged"]):
-		# 		outputMessage += colored(path.ljust(filePathLength), color="red")
-		# 		outputMessage += colored("  ", color="red")
-		# 		outputMessage += colored(oldVersion.rjust(11), color="red")
-		# 		outputMessage += colored("  ", color="red")
-		# 		outputMessage += colored(newVersion.rjust(11), color="red")
-		# 	else:
-		# 		outputMessage += colored(path.ljust(filePathLength), color="yellow")
-		# 		outputMessage += colored("  ", color="yellow")
-		# 		outputMessage += colored(oldVersion.rjust(11), color="yellow")
-		# 		outputMessage += colored("  ", color="yellow")
-		# 		outputMessage += colored(newVersion.rjust(11), color="yellow")
-		# 	outputMessage += colored(" |\n", color="green")
-
-		# outputMessage += colored("__", color="green")
-		# outputMessage += colored("_"*filePathLength, color="green")
-		# outputMessage += colored("__", color="green")
-		# outputMessage += colored("_"*11, color="green")
-		# outputMessage += colored("__", color="green")
-		# outputMessage += colored("_"*11, color="green")
-		# outputMessage += colored("__\n", color="green")
 		print(outputMessage)
 
 	def EvaluatePyProjectVersion(self, path:Path, finalVersion:SemVer) -> bool:

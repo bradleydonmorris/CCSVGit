@@ -8,52 +8,64 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 class GitRepoMeta:
+	Name:str|None = None
+	Organization:str|None = None
 	URL:str|None = None
-	OrganizationName:str|None = None
-	RepoName:str|None = None
 	ChangeLogPath:Path|None = None
 	LicensePath:Path|None = None
 	ReadMePath:Path|None = None
+	ScopeLinks:dict|None = None
 	RepoPath:Path|None = None
+	RepoMetaPath:Path|None = None
 
 	def ToDict(self) -> dict:
 		return {
+			"Name": self.Name,
+			"Organization": self.Organization,
 			"URL": self.URL,
-			"OrganizationName": self.OrganizationName,
-			"RepoName": self.RepoName,
-			"RepoPath": self.RepoPath,
-			"ChangeLogPath": self.ChangeLogPath,
-			"LicensePath": self.LicensePath,
-			"ReadMePath": self.ReadMePath
+			"ChangeLogPath": str(self.ChangeLogPath.relative_to(self.RepoPath)),
+			"LicensePath": str(self.LicensePath.relative_to(self.RepoPath)),
+			"ReadMePath": str(self.ReadMePath.relative_to(self.RepoPath)),
+			"ScopeLinks": self.ScopeLinks
 		}
 
 	def ToJSON(self) -> str:
 		return json.dumps(self.ToDict(), indent=4, default=str)
 
 	def __init__(self,
+			repoPath:Path,
+			repoMetaPath:Path|None = None,
+			name:str|None = None,
+			organization:str|None = None,
 			url:str|None = None,
-			organizationName:str|None = None,
-			repoName:str|None = None,
-			repoPath:Path|None = None,
 			changeLogPath:Path|None = None,
 			licensePath:Path|None = None,
 			readMePath:Path|None = None) -> None:
-		self.URL = url
-		self.OrganizationName = organizationName
-		self.RepoName = repoName
 		self.RepoPath = repoPath
+		self.RepoMetaPath = repoMetaPath
+		self.Name = name
+		self.Organization = organization
+		self.URL = url
 		self.ChangeLogPath = changeLogPath
 		self.LicensePath = licensePath
 		self.ReadMePath = readMePath
-		if (self.RepoPath is not None
-			and self.ChangeLogPath is None):
+		if (self.ChangeLogPath is None):
 			self.ChangeLogPath = self.RepoPath.joinpath("CHANGELOG.md")
-		if (self.RepoPath is not None
-			and self.LicensePath is None):
+		if (self.LicensePath is None):
 			self.LicensePath = self.RepoPath.joinpath("LICENSE")
-		if (self.RepoPath is not None
-			and self.ReadMePath is None):
+		if (self.ReadMePath is None):
 			self.ReadMePath = self.RepoPath.joinpath("README.md")
+		if (self.RepoMetaPath is None):
+			self.RepoMetaPath = self.RepoPath.joinpath(".repometa.json")
+		if (self.RepoMetaPath.exists()):
+			dictionary:dict = json.loads(self.RepoMetaPath.read_text())
+			if ("Name" in dictionary.keys()): self.Name = dictionary["Name"]
+			if ("Organization" in dictionary.keys()): self.Organization = dictionary["Organization"]
+			if ("URL" in dictionary.keys()): self.URL = dictionary["URL"]
+			if ("ChangeLogPath" in dictionary.keys()): self.ChangeLogPath = self.RepoPath.joinpath(dictionary["ChangeLogPath"])
+			if ("LicensePath" in dictionary.keys()): self.LicensePath = self.RepoPath.joinpath(dictionary["LicensePath"])
+			if ("ReadMePath" in dictionary.keys()): self.ReadMePath = self.RepoPath.joinpath(dictionary["ReadMePath"])
+			if ("ScopeLinks" in dictionary.keys()): self.ScopeLinks = dictionary["ScopeLinks"]
 
 	def __str__(self) -> str:
 		return self.ToJSON()
@@ -328,7 +340,10 @@ class Git:
 		return returnValue
 
 	def GetRepoMeta(self) -> GitRepoMeta:
-		returnValue:GitRepoMeta = GitRepoMeta(repoPath=self.RepoPath)
+		returnValue:GitRepoMeta = None
+		name:str = None
+		organization:str = None
+		url:str = None
 		output:bytes = subprocess.check_output(
 			executable=self.GitExecPath,
 			cwd=self.RepoPath,
@@ -339,22 +354,23 @@ class Git:
 			for line in remotes:
 				if (line.startswith("origin")
 					and line.endswith("(fetch)")):
-					url:str = line[line.index("origin")+6:line.index("(fetch)")].strip()
-					url = url[:len(url)-4]
-					if (url.startswith("https:")):
-						parsedURL = urlparse(url)
+					originURL:str = line[line.index("origin")+6:line.index("(fetch)")].strip()
+					originURL = originURL[:len(originURL)-4]
+					if (originURL.startswith("https:")):
+						parsedURL = urlparse(originURL)
 						pathElements:list = parsedURL.path.split("/")
 						if (len(pathElements) == 3):
-							returnValue.URL = url
-							returnValue.OrganizationName = pathElements[1]
-							returnValue.RepoName = pathElements[2]
+							name = pathElements[2]
+							organization = pathElements[1]
+							url = originURL
 					else:
-						url = url[url.index(":")+1:]
-						urlElements:list = url.split("/")
+						originURL = originURL[originURL.index(":")+1:]
+						urlElements:list = originURL.split("/")
 						if (len(urlElements) == 2):
-							returnValue.URL = f"https://github.com/{urlElements[0]}/{urlElements[1]}"
-							returnValue.OrganizationName = urlElements[0]
-							returnValue.RepoName = urlElements[1]
+							name = urlElements[1]
+							organization = urlElements[0]
+							url = f"https://github.com/{organization}/{name}"
+		returnValue = GitRepoMeta(repoPath=self.RepoPath, name=name, organization=organization, url=url)
 		return returnValue
 
 	def MakeCommit(self, message:str, paths:list[Path]) -> str:

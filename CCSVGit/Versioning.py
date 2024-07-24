@@ -329,7 +329,6 @@ class VersionTags:
 	GitRepo:Git | None = None
 	RepoPath:Path | None = None
 	RepoMeta:GitRepoMeta | None = None
-	ScopeLinks:dict = dict()
 	_list:list[VersionTag] = list[VersionTag]()
 
 	def __iter__(self):
@@ -338,14 +337,12 @@ class VersionTags:
 	def __getitem__(self, item):
 		return self._list[item]
 
-	def __init__(self, repoSearchPath:Path | None = None, scopeLinks:dict|None = None) -> None:
+	def __init__(self, repoSearchPath:Path | None = None) -> None:
 		if (repoSearchPath is not None
 	  		and repoSearchPath.exists()):
 			self.GitRepo = Git(repoSearchPath)
 			self.LoadFromRepo(repoSearchPath)
 			self._list = sorted(self._list, key=lambda vt: vt.Version, reverse=True)
-		if (scopeLinks is not None):
-			self.ScopeLinks = scopeLinks
 
 	def Add(self, versionTag:VersionTag) -> None:
 		self._list.append(versionTag)
@@ -493,7 +490,7 @@ class VersionTags:
 		repoURL:str = ""
 		if (self.RepoMeta is not None):
 			repoURL = self.RepoMeta.URL
-			retrunValue = f"# {self.RepoMeta.OrganizationName}/{self.RepoMeta.RepoName} - CHANGELOG\n---\n\n"
+			retrunValue = f"# {self.RepoMeta.Organization}/{self.RepoMeta.Name} - CHANGELOG\n---\n\n"
 		else:
 			retrunValue = f"# CHANGELOG\n---\n\n"
 		for versionTag in self._list:
@@ -510,16 +507,17 @@ class VersionTags:
 				for commit in versionTag.Commits:
 					commitText:str = ""
 					commitDate:str = ""
-					subject:str = f"{commit.Type}:{commit.Description}"
+					subject:str = f"{str(commit.Type).lower()}:{commit.Description}"
+					commitLink:str = f"[{commit.AbbreviatedHash}]({repoURL}/commit/{commit.Hash})"
 					if (commit.CommitterDate is not None):
-						commitDate = f"({commit.CommitterDate.strftime("%Y-%m-%d")})"
+						commitDate = commit.CommitterDate.strftime("%Y-%m-%d")
 					if (commit.Scope is not None):
-						if (commit.Scope in self.ScopeLinks.keys()):
-							subject:str = f"{commit.Type}([{commit.Scope}]({self.ScopeLinks[commit.Scope]})):{commit.Description}"
+						if (commit.Scope in self.RepoMeta.ScopeLinks.keys()):
+							subject:str = f"{str(commit.Type).lower()}([{commit.Scope}]({self.RepoMeta.ScopeLinks[commit.Scope]})):{commit.Description}"
 						else:
-							subject:str = f"{commit.Type}({commit.Scope}):{commit.Description}"
-					commitText = f"{commit.Type.GetEmoji()} {subject} ([{commit.AbbreviatedHash}]({repoURL}/commit/{commit.Hash}) {commitDate})"
-					retrunValue = f"{retrunValue}* {commitText})\n"
+							subject:str = f"{str(commit.Type).lower()}({commit.Scope}):{commit.Description}"
+					commitText = f"{commit.Type.GetEmoji()} {subject} - {commitLink} {commitDate}"
+					retrunValue = f"{retrunValue}* {commitText}\n"
 			else:
 				retrunValue = f"{retrunValue}* NO COMMITS FOUND\n"
 		return retrunValue
@@ -544,10 +542,10 @@ class Versioning:
 	SQLPublishProfilePaths:list[Path] = list[Path]()
 	ChangedFiles:list[dict] = list[dict]()
 
-	def __init__(self, repoSearchPath:Path | None = None, scopeLinks:dict|None = None) -> None:
+	def __init__(self, repoSearchPath:Path | None = None) -> None:
 		self.RepoSearchPath = repoSearchPath
 		if (self.RepoSearchPath is not None):
-			self.RepoVersionTags = VersionTags(repoSearchPath, scopeLinks)
+			self.RepoVersionTags = VersionTags(repoSearchPath)
 			for path in self.RepoVersionTags.RepoPath.rglob("pyproject.toml"):
 				self.PyProjectPaths.append(path)
 			for path in self.RepoVersionTags.RepoPath.rglob("*.sqlproj"):
@@ -635,7 +633,8 @@ class Versioning:
 				latestVersionTag:VersionTag = self.RepoVersionTags.GetLatest()
 				print(colored(latestVersionTag.Name, "blue"))
 				self.RepoVersionTags.CommitVersion(latestVersionTag.Name, f"build: bump version to {finalVersion}", changedFilePaths)
-				print(colored("Commit and Tag created. Don't forget to push.", "red"))
+				print(colored("Commit and Tag created.\nDon't forget to push the commit and the tag to origin.", "red"))
+				print(colored(f"   git push\n   git push --tags", "red", attrs=["bold"]))
 			else:
 				print(colored("NO COMMIT WAS MADE", "red"))
 

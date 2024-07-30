@@ -379,7 +379,7 @@ class Git:
 			addOutput:bytes = subprocess.check_output(
 				executable=self.GitExecPath,
 				cwd=self.RepoPath,
-				args=f" add {path.relative_to(self.RepoPath)}")
+				args=f" add {path.relative_to(self.RepoPath.replace("\\", "/"))}")
 		commitOutput:bytes = subprocess.check_output(
 			executable=self.GitExecPath,
 			cwd=self.RepoPath,

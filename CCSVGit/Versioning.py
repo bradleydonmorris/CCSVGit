@@ -76,13 +76,15 @@ class ConventionalCommit:
 	Description:str | None = None
 	Paragraphs:list[str] | None = []
 	Footers:list[ConventionalCommitFooter] | None = []
+	Files:list[str] | None = []
 
 	def __init__(self,
 			hash:str| None = None,
 			abbreviatedHash:str | None = None,
 			committerDate:datetime.datetime | str | None = None,
 			subject:str | None = None,
-			body:str | None = None) -> None:
+			body:str | None = None,
+			files:list[str] | None = None) -> None:
 		self.Hash = hash
 		self.AbbreviatedHash = abbreviatedHash
 		if isinstance(committerDate, datetime.datetime):
@@ -96,6 +98,11 @@ class ConventionalCommit:
 			self.ParseSubject()
 		if (self.Body):
 			self.ParseBody()
+		if (files is not None
+	  		and len(files) > 0):
+			self.Files = files
+		else:
+			self.Files = None
 
 	def TryParseCommitType(self, value:str) -> CommitType:
 		returnValue:CommitType = CommitType.Unknown
@@ -296,12 +303,16 @@ class VersionTag:
 		if isinstance(commit, ConventionalCommit):
 			self.TagCommit = commit
 		elif isinstance(commit, dict):
+			files:list[str] | None = None
+			if ("Files" in commit.keys()):
+				files = commit["Files"]
 			self.TagCommit = ConventionalCommit(
 				hash=commit["Hash"],
 				abbreviatedHash=commit["AbbreviatedHash"],
 				committerDate=commit["CommitterDate_IS08601Strict"],
 				subject=commit["Subject"],
-				body=commit["Body"]
+				body=commit["Body"],
+				files=files
 			)
 
 	def AppendCommit(self, commit:ConventionalCommit | dict) -> None:
@@ -310,12 +321,16 @@ class VersionTag:
 		if isinstance(commit, ConventionalCommit):
 			self.Commits.append(commit)
 		elif isinstance(commit, dict):
+			files:list[str] | None = None
+			if ("Files" in commit.keys()):
+				files = commit["Files"]
 			self.Commits.append(ConventionalCommit(
 				hash=commit["Hash"],
 				abbreviatedHash=commit["AbbreviatedHash"],
 				committerDate=commit["CommitterDate_IS08601Strict"],
 				subject=commit["Subject"],
-				body=commit["Body"]
+				body=commit["Body"],
+				files=files
 			))
 
 	def AppendCommits(self, commits:list[dict]) -> None:
@@ -341,7 +356,7 @@ class VersionTags:
 		if (repoSearchPath is not None
 	  		and repoSearchPath.exists()):
 			self.GitRepo = Git(repoSearchPath)
-			self.LoadFromRepo(repoSearchPath)
+			self.LoadFromRepo()
 			self._list = sorted(self._list, key=lambda vt: vt.Version, reverse=True)
 
 	def Add(self, versionTag:VersionTag) -> None:
@@ -456,7 +471,7 @@ class VersionTags:
 			returnValue.append(versionTagDictionary)
 		return returnValue
 
-	def LoadFromRepo(self, repoSearchPath:Path) -> None:
+	def LoadFromRepo(self) -> None:
 		self.RepoPath = self.GitRepo.RepoPath
 		self.RepoMeta = self.GitRepo.GetRepoMeta()
 		selectedAttributes:list = ["Hash", "AbbreviatedHash", "CommitterDate_IS08601Strict", "Subject", "Body"]
@@ -517,6 +532,10 @@ class VersionTags:
 						else:
 							subject:str = f"{str(commit.Type).lower()}({commit.Scope}):{commit.Description}"
 					commitText = f"{commit.Type.GetEmoji()} {subject} - {commitLink} {commitDate}"
+					if (commit.Files is not None
+		 				and len(commit.Files) > 0):
+						for file in commit.Files:
+							commitText += f"\n	* {file}"
 					retrunValue = f"{retrunValue}* {commitText}\n"
 			else:
 				retrunValue = f"{retrunValue}* NO COMMITS FOUND\n"

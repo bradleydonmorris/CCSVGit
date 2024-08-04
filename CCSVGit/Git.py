@@ -14,7 +14,7 @@ class GitRepoMeta:
 	ChangeLogPath:Path|None = None
 	LicensePath:Path|None = None
 	ReadMePath:Path|None = None
-	ScopeLinks:dict|None = None
+	ScopeLinks:dict = dict()
 	RepoPath:Path|None = None
 	RepoMetaPath:Path|None = None
 
@@ -66,6 +66,7 @@ class GitRepoMeta:
 			if ("LicensePath" in dictionary.keys()): self.LicensePath = self.RepoPath.joinpath(dictionary["LicensePath"])
 			if ("ReadMePath" in dictionary.keys()): self.ReadMePath = self.RepoPath.joinpath(dictionary["ReadMePath"])
 			if ("ScopeLinks" in dictionary.keys()): self.ScopeLinks = dictionary["ScopeLinks"]
+			else: self.ScopeLinks = dict()
 
 	def __str__(self) -> str:
 		return self.ToJSON()
@@ -199,6 +200,7 @@ class Git:
 						returnValue[key] = values[index]
 					elif (str(key).startswith("AuthorDate") or str(key).startswith("CommitterDate")):
 						returnValue[key] = datetime.fromisoformat(values[index])
+			returnValue["Files"] = self.GetCommitFiles(commitHash)
 		return returnValue
 
 	def GetFirstCommit(self, selectedAttributes:list | None = None) -> dict | None:
@@ -224,6 +226,7 @@ class Git:
 						returnValue[key] = values[index]
 					elif (str(key).startswith("AuthorDate") or str(key).startswith("CommitterDate")):
 						returnValue[key] = datetime.fromisoformat(values[index])
+			returnValue["Files"] = self.GetCommitFiles(returnValue["Hash"])
 		return returnValue
 
 	def GetLastCommit(self, selectedAttributes:list | None = None) -> dict | None:
@@ -249,6 +252,7 @@ class Git:
 						returnValue[key] = values[index]
 					elif (str(key).startswith("AuthorDate") or str(key).startswith("CommitterDate")):
 						returnValue[key] = datetime.fromisoformat(values[index])
+			returnValue["Files"] = self.GetCommitFiles(returnValue["Hash"])
 		return returnValue
 
 	def GetCommitsBetweenHashes(self,
@@ -321,8 +325,22 @@ class Git:
 				returnValue.append(self.GetCommit(hash, selectedAttributes))
 		return returnValue
 
-	def GetTags(self,
-					selectedAttributes:list | None = None) -> list:
+	def GetCommitFiles(self, commitHash:str) -> list[str]:
+		returnValue:list[str] | None = None
+		filesOutput:bytes = subprocess.check_output(
+			executable=self.GitExecPath,
+			cwd=self.RepoPath,
+			args=f" diff-tree --no-commit-id --name-only -r {commitHash}")
+		files:list = filesOutput.decode().split("\n")
+		if (files is not None
+			and len(files) > 0):
+			returnValue = []
+			for file in files:
+				if (len(file) > 0):
+					returnValue.append(file)
+		return returnValue
+
+	def GetTags(self, selectedAttributes:list | None = None) -> list:
 		returnValue:list | None = None
 		tagsOutput:bytes = subprocess.check_output(
 			executable=self.GitExecPath,
@@ -379,7 +397,7 @@ class Git:
 			addOutput:bytes = subprocess.check_output(
 				executable=self.GitExecPath,
 				cwd=self.RepoPath,
-				args=f" add {path.relative_to(self.RepoPath.replace("\\", "/"))}")
+				args=f" add {str(path.relative_to(self.RepoPath)).replace("\\", "/")}")
 		commitOutput:bytes = subprocess.check_output(
 			executable=self.GitExecPath,
 			cwd=self.RepoPath,

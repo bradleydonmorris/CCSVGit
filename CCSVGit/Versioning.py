@@ -561,6 +561,18 @@ class Versioning:
 	SQLPublishProfilePaths:list[Path] = list[Path]()
 	ChangedFiles:list[dict] = list[dict]()
 
+	@staticmethod
+	def VersionToBytes(version:str) -> bytes:
+		returnValue:bytes = None
+		if (version.startswith("v")):
+			version = version[1::]
+		versionHex:str = ""
+		for element in version.split("."):
+			versionHex += ''.join(format(x, '02x') for x in int(element).to_bytes(4))
+		returnValue = bytes.fromhex(versionHex)
+		return returnValue
+
+
 	def __init__(self, repoSearchPath:Path | None = None) -> None:
 		self.RepoSearchPath = repoSearchPath
 		if (self.RepoSearchPath is not None):

@@ -572,6 +572,18 @@ class Versioning:
 		returnValue = bytes.fromhex(versionHex)
 		return returnValue
 
+	@staticmethod
+	def VersionCompare(firstVersion:str, secondVersion:str) -> str:
+		returnValue:str = "="
+		firstVersionBytes:bytes = Versioning.VersionToBytes(firstVersion)
+		secondVersionBytes:bytes = Versioning.VersionToBytes(secondVersion)
+		if (firstVersionBytes == secondVersionBytes):
+			returnValue = "="
+		elif (firstVersionBytes < secondVersionBytes):
+			returnValue = "<"
+		elif (firstVersionBytes > secondVersionBytes):
+			returnValue = ">"
+		return returnValue
 
 	def __init__(self, repoSearchPath:Path | None = None) -> None:
 		self.RepoSearchPath = repoSearchPath

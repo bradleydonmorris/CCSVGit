@@ -1,10 +1,10 @@
 [project]
 name = "CCSVGit"
-version = "1.4.0"
+version = "1.5.0"
 authors = [
     { name = "Bradley Morris", email = "bradleydonmorris@hotmail.com" },
 ]
-description = "Utility library for using conventional commits and semantic versioning with a Git repo"
+description = "Utility library for using conventional commits and semantic versioning with a Git repo for building a CHANGELOG"
 readme = "README.md"
 requires-python = ">=3.11"
 classifiers = [
@@ -15,3 +15,4 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/bradleydonmorris/CCSVGit"
+Issues = "https://github.com/bradleydonmorris/CCSVGit/issues"

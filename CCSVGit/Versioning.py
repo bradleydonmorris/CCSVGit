@@ -500,7 +500,7 @@ class VersionTags:
 	def ToJSON(self) -> str:
 		return json.dumps(self.Serializable(), indent=4)
 
-	def GetChangeLogMarkdown(self) -> str:
+	def GetChangeLogMarkdown(self, includeChangedFilesInChangeLog:bool = False) -> str:
 		retrunValue:str = ""
 		repoURL:str = ""
 		if (self.RepoMeta is not None):
@@ -532,7 +532,8 @@ class VersionTags:
 						else:
 							subject:str = f"{str(commit.Type).lower()}({commit.Scope}):{commit.Description}"
 					commitText = f"{commit.Type.GetEmoji()} {subject} - {commitLink} {commitDate}"
-					if (commit.Files is not None
+					if (includeChangedFilesInChangeLog
+		 				and commit.Files is not None
 		 				and len(commit.Files) > 0):
 						for file in commit.Files:
 							commitText += f"\n	* {file}"
@@ -541,10 +542,10 @@ class VersionTags:
 				retrunValue = f"{retrunValue}* NO COMMITS FOUND\n"
 		return retrunValue
 
-	def SaveChangeLog(self, filePath:Path|None = None) -> None:
+	def SaveChangeLog(self, filePath:Path|None = None, includeChangedFilesInChangeLog:bool = False) -> None:
 		if (filePath is None):
 			filePath = self.RepoPath.joinpath("CHANGELOG.md")
-		filePath.write_text(self.GetChangeLogMarkdown(), encoding="utf-16")
+		filePath.write_text(self.GetChangeLogMarkdown(includeChangedFilesInChangeLog=includeChangedFilesInChangeLog), encoding="utf-16")
 
 	def SaveJSON(self, filePath:Path) -> None:
 		filePath.write_text(self.ToJSON())
@@ -596,10 +597,10 @@ class Versioning:
 			for path in self.RepoVersionTags.RepoPath.rglob("*.publish.xml"):
 				self.SQLPublishProfilePaths.append(path)
 
-	def BumpAndTag(self) -> None:
+	def BumpAndTag(self, includeChangedFilesInChangeLog:bool = False) -> None:
 		changedFilePaths:list[Path] = list[Path]()
 		if (self.RepoVersionTags is not None):
-			self.RepoVersionTags.SaveChangeLog()
+			self.RepoVersionTags.SaveChangeLog(includeChangedFilesInChangeLog=includeChangedFilesInChangeLog)
 			versionTag:VersionTag = self.RepoVersionTags.GetLatest()
 			outputMessage:str = BuildBox(
 				text="BUMP, COMMIT, AND TAG",
@@ -913,7 +914,7 @@ class Versioning:
 	def GetSQLProjectName(self, sqlProjPath:Path) -> str:
 		returnValue:str = None
 		tree = etree.parse(sqlProjPath)
-		projectNameElement = tree.xpath("//Project/PropertyGroup/Name")
+		projectNameElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'PropertyGroup']/*[local-name() = 'Name']")
 		if (projectNameElement is not None and len(projectNameElement) > 0):
 			returnValue = projectNameElement[0].text
 		return returnValue
@@ -923,14 +924,17 @@ class Versioning:
 		tree = etree.parse(sqlProjPath)
 		defaultDatabaseVersionElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'ItemGroup']/*[local-name() = 'SqlCmdVariable' and @Include='DatabaseVersion']/*[local-name() = 'DefaultValue']")
 		if (defaultDatabaseVersionElement is not None and len(defaultDatabaseVersionElement) > 0):
-			returnValue = defaultDatabaseVersionElement[0].text
+			versionText:str = defaultDatabaseVersionElement[0].text
+			if (versionText.startswith("v")):
+				versionText = versionText[1::]
+			returnValue = SemVer.parse(versionText)
 		return returnValue
 
 	def SetSQLProjectVersion(self, sqlProjPath:Path, version:SemVer):
 		tree = etree.parse(sqlProjPath)
 		defaultDatabaseVersionElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'ItemGroup']/*[local-name() = 'SqlCmdVariable' and @Include='DatabaseVersion']/*[local-name() = 'DefaultValue']")
 		if (defaultDatabaseVersionElement is not None and len(defaultDatabaseVersionElement) > 0):
-			defaultDatabaseVersionElement[0].text = str(version)
+			defaultDatabaseVersionElement[0].text = f"v{version}"
 		sqlProjPath.write_bytes(etree.tostring(tree, pretty_print=True))
 
 	def EvaluateSQLPublishProfileVersion(self, path:Path, finalVersion:SemVer) -> bool:
@@ -1063,14 +1067,17 @@ class Versioning:
 		tree = etree.parse(sqlPublishProfilePath)
 		databaseVersionElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'ItemGroup']/*[local-name() = 'SqlCmdVariable' and @Include='DatabaseVersion']/*[local-name() = 'Value']")
 		if (databaseVersionElement is not None and len(databaseVersionElement) > 0):
-			returnValue = databaseVersionElement[0].text
+			versionText:str = databaseVersionElement[0].text
+			if (versionText.startswith("v")):
+				versionText = versionText[1::]
+			returnValue = SemVer.parse(versionText)
 		return returnValue
 
 	def SetSQLPublishProfileVersion(self, sqlPublishProfilePath:Path, version:SemVer):
 		tree = etree.parse(sqlPublishProfilePath)
 		databaseVersionElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'ItemGroup']/*[local-name() = 'SqlCmdVariable' and @Include='DatabaseVersion']/*[local-name() = 'Value']")
 		if (databaseVersionElement is not None and len(databaseVersionElement) > 0):
-			databaseVersionElement[0].text = str(version)
+			databaseVersionElement[0].text = f"v{version}"
 		sqlPublishProfilePath.write_bytes(etree.tostring(tree, pretty_print=True))
 
 __all__ = ["CommitType", "VersionSegment",

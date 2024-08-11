@@ -798,6 +798,82 @@ class VersionScanner:
 			minimumCellWidths=[maxTypeLength, maxProjectNameLength, maxVersionLength, maxRelativePathLength])
 		return returnValue
 
+	def GetList(self) -> str:
+		returnValue:str = "PROJECT VERSIONS\n"
+		maxProjectNameLength:int = 40 #len("Name: ")
+		maxTypeLength:int = len("Type: ")
+		maxVersionLength:int = len("Version")
+		for version in self.Versions:
+			typeString:str = "Type: " + version["Type"]
+			if (len(typeString) > maxTypeLength):
+				maxTypeLength = len(typeString)
+			versionString:str = str(version["Version"])
+			if (not versionString.startswith("v")):
+				versionString = f"v{versionString}"
+			versionString = f"Version: {versionString}"
+			if (len(versionString) > maxVersionLength):
+				maxVersionLength = len(versionString)
+		for version in self.Versions:
+			pathString:str = str(version["RelativePath"])
+			nameString:str = version["ProjectName"]
+			typeString:str = version["Type"]
+			versionString:str = str(version["Version"])
+			if (not versionString.startswith("v")):
+				versionString = f"v{versionString}"
+			nameString:str = f"Name: {nameString}"
+			if (len(nameString) > 40):
+				nameString = f"{nameString[:39]}…"
+			nameString = nameString.ljust(maxProjectNameLength)
+			typeString = f"Type: {typeString}".ljust(maxTypeLength)
+			versionString = f"Version: {versionString}".ljust(maxVersionLength)
+			returnValue += f"{pathString}\n\t{nameString}\t{typeString}\t\t{versionString}\n"
+		return returnValue
+
+	def GetFancyList(self,
+		pathColor:str|None=None,
+		nameColor:str|None=None,
+		typeColor:str|None=None,
+		versionColor:str|None=None) -> str:
+		returnValue:str = "PROJECT VERSIONS\n"
+		maxProjectNameLength:int = 40 #len("Name: ")
+		maxTypeLength:int = len("Type: ")
+		maxVersionLength:int = len("Version")
+		for version in self.Versions:
+			typeString:str = "Type: " + version["Type"]
+			if (len(typeString) > maxTypeLength):
+				maxTypeLength = len(typeString)
+			versionString:str = str(version["Version"])
+			if (not versionString.startswith("v")):
+				versionString = f"v{versionString}"
+			versionString = f"Version: {versionString}"
+			if (len(versionString) > maxVersionLength):
+				maxVersionLength = len(versionString)
+		for version in self.Versions:
+			pathString:str = str(version["RelativePath"])
+			nameString:str = version["ProjectName"]
+			typeString:str = version["Type"]
+			versionString:str = str(version["Version"])
+			if (not versionString.startswith("v")):
+				versionString = f"v{versionString}"
+			nameString:str = f"Name: {nameString}"
+			if (len(nameString) > 40):
+				nameString = f"{nameString[:39]}…"
+			nameString = nameString.ljust(maxProjectNameLength)
+			typeString = f"Type: {typeString}".ljust(maxTypeLength)
+			versionString = f"Version: {versionString}".ljust(maxVersionLength)
+			if (pathColor is not None):
+				pathString = colored(pathString, color=pathColor, attrs=["bold"])
+			else:
+				pathString = colored(pathString, attrs=["bold"])
+			if (nameColor is not None):
+				nameString = colored(nameString, color=nameColor)
+			if (nameColor is not None):
+				typeString = colored(typeString, color=typeColor)
+			if (versionColor is not None):
+				versionString = colored(versionString, color=versionColor)
+			returnValue += f"{pathString}\n\t{nameString}\t{typeString}\t\t{versionString}\n"
+		return returnValue
+
 class Versioning:
 	RepoSearchPath:Path | None = None
 	RepoVersionTags:VersionTags | None = None

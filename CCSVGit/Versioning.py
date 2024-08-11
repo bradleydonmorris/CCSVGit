@@ -554,6 +554,250 @@ class VersionTags:
 		commitHash:str = self.GitRepo.MakeCommit(message, paths)
 		self.GitRepo.TagCommit(tagName, commitHash)
 
+class VersionScanner:
+	RepoPath:Path|None = None
+	PyProjectPaths:list[Path] = list[Path]()
+	SQLProjectPaths:list[Path] = list[Path]()
+	SQLPublishProfilePaths:list[Path] = list[Path]()
+	Versions:list[dict] = list[dict]()
+
+	def __init__(self, searchPath:Path) -> None:
+		self.RepoPath = self.GetRepoPathFromPath(searchPath)
+		if (self.RepoPath is not None):
+			for path in self.RepoPath.rglob("pyproject.toml"):
+				self.PyProjectPaths.append(path)
+				self.Versions.append({
+						"Type": "PyProject",
+						"RelativePath": path.relative_to(self.RepoPath),
+						"ProjectName": self.GetPyProjectName(path),
+						"Version": self.GetPyProjectVersion(path)
+				})
+			for path in self.RepoPath.rglob("*.sqlproj"):
+				self.SQLProjectPaths.append(path)
+				self.Versions.append({
+						"Type": "SQLProject",
+						"RelativePath": path.relative_to(self.RepoPath),
+						"ProjectName": self.GetSQLProjectName(path),
+						"Version": self.GetSQLProjectVersion(path)
+				})
+			for path in self.RepoPath.rglob("*.publish.xml"):
+				self.SQLPublishProfilePaths.append(path)
+				self.Versions.append({
+						"Type": "SQLPublishProfile",
+						"RelativePath": path.relative_to(self.RepoPath),
+						"ProjectName": self.GetSQLPublishProfileName(path),
+						"Version": self.GetSQLPublishProfileVersion(path)
+				})
+
+	def GetRepoPathFromPath(self, searchPath:Path) -> Path:
+		continueLoop:bool = True
+		gitRepoDir:Path = None
+		if (searchPath.is_file()):
+			searchPath = searchPath.parent
+		while (continueLoop):
+			if (searchPath == searchPath.parent):
+				if (searchPath.joinpath(".git").exists()):
+					gitRepoDir = searchPath
+				else:
+					gitRepoDir = None
+				continueLoop = False
+			if (searchPath != searchPath.parent):
+				if (searchPath.joinpath(".git").exists()):
+					gitRepoDir = searchPath
+					continueLoop = False
+				else:
+					searchPath = searchPath.parent
+		if (gitRepoDir is None):
+			raise  Exception("Git Repo Not Found")
+		return gitRepoDir
+
+	def GetPyProjectName(self, tomlPath:Path) -> str:
+		returnValue:str = None
+		tomlData:dict = tomllib.loads(tomlPath.read_text())
+		returnValue = tomlData["project"]["name"]
+		return returnValue
+
+	def GetPyProjectVersion(self, tomlPath:Path) -> SemVer:
+		returnValue:SemVer = None
+		tomlData:dict = tomllib.loads(tomlPath.read_text())
+		returnValue = SemVer.parse(tomlData["project"]["version"])
+		return returnValue
+
+	def GetSQLProjectName(self, sqlProjPath:Path) -> str:
+		returnValue:str = None
+		tree = etree.parse(sqlProjPath)
+		projectNameElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'PropertyGroup']/*[local-name() = 'Name']")
+		if (projectNameElement is not None and len(projectNameElement) > 0):
+			returnValue = projectNameElement[0].text
+		return returnValue
+
+	def GetSQLProjectVersion(self, sqlProjPath:Path) -> SemVer:
+		returnValue:SemVer = None
+		tree = etree.parse(sqlProjPath)
+		defaultDatabaseVersionElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'ItemGroup']/*[local-name() = 'SqlCmdVariable' and @Include='DatabaseVersion']/*[local-name() = 'DefaultValue']")
+		if (defaultDatabaseVersionElement is not None and len(defaultDatabaseVersionElement) > 0):
+			versionText:str = defaultDatabaseVersionElement[0].text
+			if (versionText.startswith("v")):
+				versionText = versionText[1::]
+			returnValue = SemVer.parse(versionText)
+		return returnValue
+
+	def GetSQLPublishProfileName(self, sqlPublishProfilePath:Path) -> str:
+		returnValue:str = None
+		targetServerName:str = None
+		targetDatabaseName:str = None
+		targetConnectionString:str = None
+		tree = etree.parse(sqlPublishProfilePath)
+		targetDatabaseNameElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'PropertyGroup']/*[local-name() = 'TargetDatabaseName']")
+		if (targetDatabaseNameElement is not None and len(targetDatabaseNameElement) > 0):
+			targetDatabaseName = targetDatabaseNameElement[0].text
+		targetConnectionStringElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'PropertyGroup']/*[local-name() = 'TargetConnectionString']")
+		if (targetConnectionStringElement is not None and len(targetConnectionStringElement) > 0):
+			targetConnectionString = targetConnectionStringElement[0].text
+		if (targetConnectionString is not None):
+			connString:dict = self.ParseSQLServerConnectionString(targetConnectionString)
+			if ("Data Source" in connString.keys()):
+				targetServerName = connString["Data Source"]
+		returnValue = f"[{targetServerName}].[{targetDatabaseName}]"
+		return returnValue
+
+	def GetSQLPublishProfileVersion(self, sqlPublishProfilePath:Path) -> SemVer:
+		returnValue:SemVer = None
+		tree = etree.parse(sqlPublishProfilePath)
+		databaseVersionElement = tree.xpath("//*[local-name() = 'Project']/*[local-name() = 'ItemGroup']/*[local-name() = 'SqlCmdVariable' and @Include='DatabaseVersion']/*[local-name() = 'Value']")
+		if (databaseVersionElement is not None and len(databaseVersionElement) > 0):
+			versionText:str = databaseVersionElement[0].text
+			if (versionText.startswith("v")):
+				versionText = versionText[1::]
+			returnValue = SemVer.parse(versionText)
+		return returnValue
+
+	def ParseSQLServerConnectionString(self, connectionString:str, removeSensitiveInfo:bool = False) -> dict:
+		returnValue:dict = dict()
+		for keyValue in connectionString.split(";"):
+			keyValue = keyValue.strip()
+			if (keyValue):
+				keyValuePair:list = keyValue.split("=")
+				key:str = ""
+				value:str = ""
+				if (len(keyValuePair) == 2):
+					key = keyValuePair[0].strip()
+					value = keyValuePair[1].strip()
+					returnValue.update({key: value})
+				elif (len(keyValuePair) == 1):
+					key = keyValuePair[0].strip()
+					value = ""
+					returnValue.update({key: value})
+		if (removeSensitiveInfo):
+			returnValue.pop("Password")
+		return returnValue
+
+	def GetFancyTable(self,
+		borderColor:str|None=None,
+		headerColor:str|None=None,
+		valueColor:str|None=None) -> str:
+		returnValue:str = None
+		
+		if (borderColor is None):
+			borderColor = "green"
+		if (headerColor is None):
+			headerColor = "green"
+		if (valueColor is None):
+			valueColor = "yellow"
+		maxTypeLength:int = len("Type")
+		maxProjectNameLength:int = len("Project Name")
+		maxRelativePathLength:int = len("Relative Path")
+		maxVersionLength:int = len("Version")
+		for version in self.Versions:
+			if (len(version["Type"]) > maxTypeLength):
+				maxTypeLength = len(version["Type"])
+			if (len(version["ProjectName"]) > maxProjectNameLength):
+				maxProjectNameLength = len(version["ProjectName"])
+			versionString:str = str(version["Version"])
+			if (not versionString.startswith("v")):
+				versionString = f"v{versionString}"
+			if (len(versionString) > maxVersionLength):
+				maxVersionLength = len(versionString)
+			if (len(str(version["RelativePath"])) > maxRelativePathLength):
+				maxRelativePathLength = len(str(version["RelativePath"]))
+
+		dataRows:list[list[str]] = list[list[str]]()
+		for version in self.Versions:
+			type:str = version["Type"].ljust(maxTypeLength)
+			projectName:str = version["ProjectName"].ljust(maxProjectNameLength)
+			versionString:str = str(version["Version"])
+			if (not versionString.startswith("v")):
+				versionString = f"v{versionString}"
+			versionString = versionString.ljust(maxVersionLength)
+			relativePath:str = str(version["RelativePath"]).ljust(maxRelativePathLength)
+			dataRows.append([
+				colored(type, color=valueColor),
+				colored(projectName, color=valueColor),
+				colored(versionString, color=valueColor),
+				colored(relativePath, color=valueColor)
+			])
+		headerRows:list[list[str]] = [[
+				colored("Type".ljust(maxTypeLength), color=headerColor, attrs=["bold"]),
+				colored("Project Name".ljust(maxProjectNameLength), color=headerColor, attrs=["bold"]),
+				colored("Version".ljust(maxVersionLength), color=headerColor, attrs=["bold"]),
+				colored("Relative Path".ljust(maxRelativePathLength), color=headerColor, attrs=["bold"])
+		]]
+		returnValue = BuildTable(
+			headerRows=headerRows,
+			dataRows=dataRows,
+			footerRows=None,
+			borderColor=borderColor,
+			minimumCellWidths=[maxTypeLength, maxProjectNameLength, maxVersionLength, maxRelativePathLength])
+		return returnValue
+
+	def GetTable(self) -> str:
+		returnValue:str = None
+		maxTypeLength:int = len("Type")
+		maxProjectNameLength:int = len("Project Name")
+		maxRelativePathLength:int = len("Relative Path")
+		maxVersionLength:int = len("Version")
+		for version in self.Versions:
+			if (len(version["Type"]) > maxTypeLength):
+				maxTypeLength = len(version["Type"])
+			if (len(version["ProjectName"]) > maxProjectNameLength):
+				maxProjectNameLength = len(version["ProjectName"])
+			versionString:str = str(version["Version"])
+			if (not versionString.startswith("v")):
+				versionString = f"v{versionString}"
+			if (len(versionString) > maxVersionLength):
+				maxVersionLength = len(versionString)
+			if (len(str(version["RelativePath"])) > maxRelativePathLength):
+				maxRelativePathLength = len(str(version["RelativePath"]))
+
+		dataRows:list[list[str]] = list[list[str]]()
+		for version in self.Versions:
+			type:str = version["Type"].ljust(maxTypeLength)
+			projectName:str = version["ProjectName"].ljust(maxProjectNameLength)
+			versionString:str = str(version["Version"])
+			if (not versionString.startswith("v")):
+				versionString = f"v{versionString}"
+			versionString = versionString.ljust(maxVersionLength)
+			relativePath:str = str(version["RelativePath"]).ljust(maxRelativePathLength)
+			dataRows.append([
+				type,
+				projectName,
+				versionString,
+				relativePath
+			])
+		headerRows:list[list[str]] = [[
+				"Type".ljust(maxTypeLength),
+				"Project Name".ljust(maxProjectNameLength),
+				"Version".ljust(maxVersionLength),
+				"Relative Path".ljust(maxRelativePathLength)
+		]]
+		returnValue = BuildTable(
+			headerRows=headerRows,
+			dataRows=dataRows,
+			footerRows=None,
+			borderColor=None,
+			minimumCellWidths=[maxTypeLength, maxProjectNameLength, maxVersionLength, maxRelativePathLength])
+		return returnValue
+
 class Versioning:
 	RepoSearchPath:Path | None = None
 	RepoVersionTags:VersionTags | None = None
@@ -1084,4 +1328,4 @@ __all__ = ["CommitType", "VersionSegment",
 		   "ConventionalCommitFooter", "ConventionalCommit",
 		   "ConventionalCommitStats",
 		   "VersionTag", "VersionTags",
-		   "Versioning"]
+		   "VersionScanner", "Versioning"]
